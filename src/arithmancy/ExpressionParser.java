@@ -20,12 +20,18 @@ public class ExpressionParser {
         e = e.toLowerCase();
 
         // Add spaces around all known operators to facilitate further processing
-        for (String opToken: knownOps.values()) {
+        for (String opToken: knownOps().values()) {
             String opPar = '(' + Pattern.quote(opToken) + ')';
             e = e.replaceAll(opPar, ADD_SPACES_AROUND);
         }
 
-        // Add spaces around numbers
+        // Ditto for named constants
+        for (String consToken: knownNamedConsts.keySet()) {
+            String cons = '(' + Pattern.quote(consToken) + ')';
+            e = e.replaceAll(cons, ADD_SPACES_AROUND);
+        }
+
+        // Ditto for numbers
         e = e.replaceAll(ANY_NUMBER, ADD_SPACES_AROUND);
 
         // Replace all whitespaces with single spaces, remove all spaces around parentheses, remove starting and ending whitespace
@@ -73,7 +79,7 @@ public class ExpressionParser {
         if (atoms.size() == 0) throw new ParsingError("Empty expression");
 
         for(String a: atoms) {
-            // ============== Main recognizer. Adds pieces as incomplete expressions (i. e. operators without operands)
+            // ============== Main recognizer. Adds recongnized pieces as incomplete expressions (i. e. operators without operands)
 
 
             Matcher m = ATOM.matcher(a);
@@ -88,43 +94,43 @@ public class ExpressionParser {
             } else if (knownNamedConsts.keySet().contains(a)) {                                     // A named constant
                 expressionChain.add(knownNamedConsts.get(a));
 
-            } else if (knownOps.values().contains(a)) {                                             // It is a known operator
-                Operator op = null;
-                Operator unaryA = null;
-                Operator binaryA = null;
-                for (Map.Entry<Operator, String> knop : knownOps.entrySet())
-                    if (knop.getValue().equals(a)) switch (knop.getKey().kind) {                    // At least one of (unaryA, binaryA) is guaranteed to be !null
-                        case UNARY: unaryA = knop.getKey();
-                            break;
-                        case BINARY: binaryA = knop.getKey();
-                            break;
-                    }
-                if (binaryA == null)
-                    op = unaryA;
-                else if (unaryA == null)
-                    op = binaryA;
-                else if (expressionChain.size() == 0)                       // Ambiguity: both unary and binary versions of the operator exist
-                    op = unaryA;                                            // If expression begins with an operator, it is always unary
-                else {
-                    Expression prev = expressionChain.getLast();            // Guaranteed to exist
-                    if ((prev instanceof Constant)||(prev instanceof Variable))
-                        op = binaryA;                                       // "a - 2" is a - 2, not a*(-2)
-                    else if (prev instanceof Operator) {
-                        op = ((Operator) prev).incomplete() ? unaryA : binaryA;     // (a+2)-3: binary '-', a+ -3: unary '-'
-                    }
-                }
-                expressionChain.add(op.clone());
+            } else {
+                boolean isUnary = knownUnaries.keySet().contains(a);
+                boolean isBinary = knownBinaries.keySet().contains(a);
+                if (isUnary || isBinary) {                                                          // It is a known operator
 
-            } else                                                          // Not a number, ATOM or operator? It's a variable.
-                expressionChain.add(addNewVariable(a));                     // addNewVariable() checks for duplicates.
+                    Operator op = null;                                                                   // Select prototype: unary or binary
+                    Operator unaryA = isUnary? knownUnaries.get(a) : null;
+                    Operator binaryA = isBinary? knownBinaries.get(a) : null;
+
+                    // At least one of (unaryA, binaryA) is guaranteed to be !null
+                    if (binaryA == null)
+                        op = unaryA;
+                    else if (unaryA == null)
+                        op = binaryA;
+                    else if (expressionChain.size() == 0)                       // Ambiguity: both unary and binary versions of the operator exist
+                        op = unaryA;                                            // If expression begins with an operator, it is always unary
+                    else {
+                        Expression prev = expressionChain.getLast();            // Guaranteed to exist
+                        if ((prev instanceof Constant) || (prev instanceof Variable))
+                            op = binaryA;                                       // "a - 2" is a - 2, not a*(-2)
+                        else if (prev instanceof OperatorInstance) {
+                            op = ((OperatorInstance) prev).incomplete() ? unaryA : binaryA;     // (a+2)-3: binary '-', a+ -3: unary '-'
+                        }
+                    }
+                    expressionChain.add(new OperatorInstance(op));
+
+                } else                                                          // Not a number, ATOM or operator? It's a variable.
+                    expressionChain.add(addNewVariable(a));                     // addNewVariable() checks for duplicates.
+            }
         }
 
-        for (Operator op: opsReorederedByPrecedence(expressionChain)) {
+        for (OperatorInstance op: opsReorederedByPrecedence(expressionChain)) {
             int opPos = expressionChain.indexOf(op);
-            if (opPos == expressionChain.size() - 1) throw new ParsingError("Operator " + op.token + " has no right operand");
+            if (opPos == expressionChain.size() - 1) throw new ParsingError("OperatorInstance " + op.token + " has no right operand");
             op.rightOperand = expressionChain.remove(opPos + 1);
             if (op.kind == BINARY) {
-                if (opPos == 0) throw new ParsingError("Operator " + op.token + " has no left operand");
+                if (opPos == 0) throw new ParsingError("OperatorInstance " + op.token + " has no left operand");
                 op.leftOperand = expressionChain.remove(opPos - 1);
             }
         }
@@ -148,26 +154,24 @@ public class ExpressionParser {
      * Constants, vars and COMPLETE operators (i.e. those who already have their right operand) are OMITTED.
      * Input list is unaffected.
      */
-    private static List<Operator> opsReorederedByPrecedence(List<Expression> chain) {
+    private static List<OperatorInstance> opsReorederedByPrecedence(final Collection<Expression> expChain) {
 
-        LinkedList<Expression> unordered = (chain instanceof LinkedList)? (LinkedList)chain : new LinkedList<>(chain);
-        List<Operator> reordered = new ArrayList<>();
+        LinkedList<Expression> unordered = (expChain instanceof LinkedList)? (LinkedList)expChain : new LinkedList<>(expChain);
+        List<OperatorInstance> reordered = new ArrayList<>();
 
         // Loop for all precedences from highest to lowest
-        for (int i = Operator.Precedence.values().length; --i >= 0; ) {
-            Operator.Precedence prec = Operator.Precedence.values()[i];
+        for (Operator.Precedence currentPrec : Operator.Precedence.descending() ) {
 
             // Functions and other unary operators are evaluated RTL, all other operators are evaluated LTR.
-            Iterator<Expression> pass = (prec == Operator.Precedence.FUNC)? unordered.descendingIterator() : unordered.iterator();
+            Iterator<Expression> pass = (currentPrec == Operator.Precedence.FUNC)? unordered.descendingIterator() : unordered.iterator();
             for (; pass.hasNext();) {
                 Expression nextEx = pass.next();
                 // Adding only operators with current precedence that have no operands
-                if ((nextEx instanceof Operator) && (((Operator) nextEx).prec == prec) && ((Operator) nextEx).incomplete()) {
-                    reordered.add((Operator) nextEx);
+                if ((nextEx instanceof OperatorInstance) && (((OperatorInstance) nextEx).prec == currentPrec) && ((OperatorInstance) nextEx).incomplete()) {
+                    reordered.add((OperatorInstance) nextEx);
                 }
             }
         }
-
         return reordered;
     }
 
@@ -182,7 +186,7 @@ public class ExpressionParser {
                     break;
             }
         } while (b > 0);
-        return s.substring(pos+1, p);
+        return s.substring(pos + 1, p);
     }
 
     /**
@@ -210,7 +214,8 @@ public class ExpressionParser {
      }
 
     /**
-     * Loads default set of arithmetic operators, functions etc.<p>
+     * Loads default set of arithmetic operators, functions etc.<br>
+     * It gets called automatically during static initiation. No need to call it again unless you clear known operator list using clearKnownOperators().<br>
      * To add suport for new operators by default, extend this class, override
      * LoadDefaultKnownOperators, call super() and then add any additional
      * operators or functions you need. All functions are implicitly unary operators.
@@ -218,101 +223,86 @@ public class ExpressionParser {
     public static void loadDefaultKnownOperators() {
         clearKnownOperators();
 
-        addOperator(new Operator(BINARY, ADD)  {
-            @Override
-            public double calculate() {
-                return leftOperand() + rightOperand();
-            }
-        }, "+");
+        addOperator(new Operator("+", ADD, (x, y) -> x + y) );
 
-        addOperator(new Operator(BINARY, ADD) {
-            @Override
-            public double calculate() {
-                return leftOperand() - rightOperand();
-            }
-        }, "-");
+        addOperator(new Operator("-", ADD, (x, y) -> x - y) );
 
-        addOperator(new Operator(BINARY, MUL) {
-            @Override
-            public double calculate() {
-                return leftOperand()*rightOperand();
-            }
-        }, "*");
+        addOperator(new Operator("*", MUL, (x, y) -> x * y) );
 
-        addOperator(new Operator(BINARY, MUL) {
-            @Override
-            public double calculate() {
-                return leftOperand()/rightOperand();
-            }
-        }, "/");
+        addOperator(new Operator("/", MUL, (x, y) -> x / y) );
 
-        addOperator(new Operator(BINARY, POW) {
-            @Override
-            public double calculate() {
-                return Math.exp(Math.log(leftOperand())*rightOperand());
-            }
-        }, "^");
+        addOperator(new Operator("^", POW, (x, y) -> Math.exp(Math.log(x)*y)) );
 
-        addOperator(new Function() {       // Unary + and - has the same precedence as functions, so that 2*-1 = -2; sin-x = sin(-x); -x^2 = -(x^2)
-            @Override
-            public double calculate() {
-                return -rightOperand();
-            }
-        }, "-");
+        addOperator(new Operator("-", FUNC, (x) -> -x ) );
 
-        addOperator(new Function() {
-            @Override
-            public double calculate() {
-                return rightOperand();
-            }
-        }, "+");
+        addOperator(new Operator("+", FUNC, (x) -> x ) );
+
+        addOperator(new Operator("ln", FUNC, Math::log) );
+
+        addOperator(new Operator("exp", FUNC, Math::exp) );
+
+        addOperator(new Operator("sin", FUNC, Math::sin) );
+
+        addOperator(new Operator("cos", FUNC, Math::cos) );
+
+        addOperator(new Operator("tg", FUNC, Math::tan) );
+
 // TODO: add more standard functions
         recalculateValidChars();
     }
 
     private static void recalculateValidChars() {
-        StringBuilder validCh = new StringBuilder("[a-z\\s\\d\\.\\(\\)\\Q");
+        StringBuilder validCh = new StringBuilder();
+        for (String opToken:knownOps().values()) validCh.append(opToken);
 
-        for (String opToken:knownOps.values()) {
-            validCh.append(opToken);
-        }
-        validCh.append("\\E]*");
-        validChars = Pattern.compile(validCh.toString());
+        validChars = Pattern.compile("[a-z\\s\\d\\.\\(\\)" + Pattern.quote(validCh.toString()) + "]*");
     }
 
     /**
      * Clears the list of known operators. Call this function to load a nonconventional set of operators.
      */
     public static void clearKnownOperators() {
-        knownOps.clear();
+        knownUnaries.clear();
+        knownBinaries.clear();
         validChars = DEFAULT_VALID_CHARS;
+        knownOpsCache = null;
     }
 
     /**
      * Adds a new operator or function to known operator collection. Returns true if successful.<br>
      * Following restrictions apply (the term "operator" here includes functions):<br>
-     * Operator cannot be null.<br>
-     * Operator token cannot include uppercase letters.<br>
-     * Operator cannot have the same token and number of operands as existing operator.<br>
-     * Operator token cannot be a substring or superstring of any operator's token already in collection.<br>
+     * OperatorInstance cannot be null.<br>
+     * OperatorInstance token cannot include uppercase letters.<br>
+     * OperatorInstance cannot have the same token and number of operands as existing operator.<br>
+     * OperatorInstance token cannot be a substring or superstring of any operator's token already in collection.<br>
      * Two operators with the same token are possible if and only if one of them is unary and other is binary.
-     * @param op Operator to add
-     * @param token Representation of the operator in the string expression
+     * @param op Operator to add. Effect of the operator is implemented through "effect" parameter during creation of the Operator object.
      * @return Returns {@code true} if successful, {@code false} if the new operator conflicts with already known operators
      */
-    public static boolean addOperator(Operator op, String token) {
-        if ((null == op)||(null == token)||(token.equals(""))) return false;
-        if (knownOps.containsKey(op)) return true;
-        if (!token.equals(token.toLowerCase())) return false;
+    public static boolean addOperator(Operator op) {
 
-        for(Map.Entry<Operator, String> knop: knownOps.entrySet()) {
+        if ((null == op)||(null == op.token)||(op.token.equals(""))) return false;
+        if (knownOps().containsKey(op)) return true;
+        if (!op.token.equals(op.token.toLowerCase())) return false;
+
+        for(Map.Entry<Operator, String> knop: knownOps().entrySet()) {
             String knopToken = knop.getValue();
-            if ( (knop.getKey().kind == op.kind)&&(knopToken.equals(token)) || (knopToken.contains(token) || token.contains(knopToken))&&(token.length() != knopToken.length()) ) return false;
+            if ( (knop.getKey().kind == op.kind)&&(knopToken.equals(op.token)) ||
+                    (knopToken.contains(op.token) || op.token.contains(knopToken)) &&(op.token.length() != knopToken.length()) ) return false;
         }
 
-        knownOps.put(op, token);
+        switch (op.kind) {
+            case UNARY:
+                knownUnaries.put(op.token, op);
+                break;
+            case BINARY:
+                knownBinaries.put(op.token, op);
+                break;
+            default:
+                throw new InvalidOperatorKind(op.token);
+        }
         recalculateValidChars();
-        op.token = token;
+        knownOpsCache = null;
         return true;
     }
 
@@ -320,6 +310,10 @@ public class ExpressionParser {
         knownNamedConsts.clear();
         addNamedConstant("pi", Math.PI);
         addNamedConstant("e", Math.E);
+    }
+
+    public static void unsetAllVariables() {
+        for (Variable v: knownVars.values()) v.unsetValue();
     }
 
     /**
@@ -334,39 +328,60 @@ public class ExpressionParser {
         if (knownNamedConsts.keySet().contains(name))
             return value == knownNamedConsts.get(name).calculate();
 
-        knownNamedConsts.put(name, new Constant(value));
+        knownNamedConsts.put(name, new NamedConstant(value, name));
         return true;
     }
 
     private static Variable addNewVariable(String name) {                                    // All variables of the same name are intrinsically the same Variable object
-        for (Variable v: knownVars) if (v.getName().equals(name)) return v;
+        if (knownVars.containsKey(name)) return knownVars.get(name);
 
-        Variable newv = new Variable(name);
-        knownVars.add(newv);
-        return newv;
+        Variable newV = new Variable(name);
+        knownVars.put(name, newV);
+        return newV;
     }
 
-    private static Map<Operator, String> knownOps = new HashMap<>();
+
+    /**
+     * Breaks up string that contains no spaces into variables and operators.
+     */
+/*    private static String[] breakAtom(String s) {      // TODO: implement this correctly and use in parseSubstring()
+    }*/
+
+    public static void setVariable(String varName, Double varVal) throws UnknownVariableException {
+        if (!knownVars.containsKey(varName)) throw new UnknownVariableException(varName);
+        knownVars.get(varName).setValue(varVal);
+    }
+
+
+    /** Static class, no instantiation
+     */
+    private ExpressionParser() {}
+
+    private static Map<String, Operator> knownUnaries = new HashMap<>();
+    private static Map<String, Operator> knownBinaries = new HashMap<>();
+
+    private static Map<Operator, String> knownOps() {
+        if (null == knownOpsCache) {
+            knownOpsCache = new HashMap<>();
+            for (Map.Entry<String, Operator> unOp: knownUnaries.entrySet()) {
+                knownOpsCache.put(unOp.getValue(), unOp.getKey());
+            }
+            for (Map.Entry<String, Operator> biOp: knownBinaries.entrySet()) {
+                knownOpsCache.put(biOp.getValue(), biOp.getKey());
+            }
+        }
+        return knownOpsCache;
+    }
+
     private static Pattern validChars = DEFAULT_VALID_CHARS;       // Gets updated when adding new known operators
 
-    private static Set<Variable> knownVars = new HashSet<>();
+    private static Map<Operator, String> knownOpsCache;            // Invalidate (= null) every time when adding or removing operators
+    private static Map<String, Variable> knownVars = new HashMap<>();
     private static Map<String, Constant> knownNamedConsts = new HashMap<>();
 
     static {       // Static init block
         loadDefaultKnownOperators();
         resetNamedConstants();
-    }
-
-    // Static class, no instantiation
-    private ExpressionParser() {}
-
-    /**
-     * Breaks up string that contains no spaces into variables and operators.
-     */
-    private static String[] breakAtom(String s) {      // TODO: implement this correctly
-        String[] sarr = new String[1];
-        sarr[0] = s;
-        return sarr;
     }
 
 }

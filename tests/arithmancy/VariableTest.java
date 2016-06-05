@@ -5,7 +5,7 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class VariableTest {
-    @Test(expected = VariableNotSet.class)
+    @Test(expected = VariableNotSetException.class)
     public void unsetVariableCannotBeCalculated() {
         Variable v = new Variable("'v");
         v.calculate();
@@ -14,7 +14,7 @@ public class VariableTest {
     @Test
     public void setVariableCanBeCalculated() {
         Variable v = new Variable("v");
-        v.setValue(1);
+        v.setValue(1.0);
         assertTrue(v.calculate() == 1.0d);
     }
 }

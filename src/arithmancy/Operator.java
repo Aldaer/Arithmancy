@@ -1,100 +1,165 @@
 package arithmancy;
 
-import java.util.Iterator;
-import java.util.Set;
+import java.util.*;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+
+import static arithmancy.Operator.Kind;
+import static arithmancy.Operator.Kind.BINARY;
+import static arithmancy.Operator.Kind.UNARY;
+import static arithmancy.Operator.Precedence;
 
 /**
- * Operator in calculable expressions.  Implement calculate() to provide your own operators. Use leftOperand() and rightOperand() as operands of your operator.
+ * OperatorInstance in calculable expressions. Used in Expression tree.
  */
-abstract class Operator implements Expression, Cloneable {      // Operators implement prototype design pattern.
-                                                                // Operators in expression are cloned from
+class OperatorInstance implements Expression {
 
-    enum Kind { UNARY, BINARY }
-
-    /** Operator precedences. Must be declared in ascending order
-     */
-    enum Precedence { ADD(1), MUL(10), FUNC(20), POW(30);
-
-        @Deprecated
-        public int ord() {
-            return val;
-        }
-
-        Precedence(int val) {
-            this.val = val;
-        }
-
-        private int val;
-
-        /**
-         * Iterator to iterate precedences from highest to lowest.<br>
-         * Please note that precedences are iterated highest to lowest BY DEFAULT
-         * @return Backwards iterator
-         */
-    }
-    final Kind kind;
     final Precedence prec;
+    final Kind kind;
+    final String token;
 
-    String token;                   // Gets set when operator is added to the collection of known operators.
-                                    // Used ONLY in toLispString()
+    private final java.util.function.BiFunction<Double, Double, Double> calculateBi;
+    private final java.util.function.Function<Double, Double> calculateU;
 
-    protected double argument() {
-        return rightOperand.calculate();
-    }
-
-    protected double rightOperand() {
-        return rightOperand.calculate();
-    }
-
-    protected double leftOperand() {
-        return leftOperand.calculate();
+    OperatorInstance(Operator proto) {
+        this.kind = proto.kind;
+        this.prec = proto.prec;
+        this.token = proto.token;
+        calculateBi = proto.calculateBi;
+        calculateU = proto.calculateU;
     }
 
     boolean incomplete() {
         return rightOperand == null;
     }
 
-    // Always NULL in knownOps, get set it cloned versions
     Expression leftOperand;
     Expression rightOperand;
 
-    Operator(Kind kind, Precedence precedence) {
-        this.kind = kind;
-        this.prec = precedence;
-    }
-
     @Override
-    public Set<Variable> dependsOnVariables() {
+    public Double calculate() {
         switch (kind) {
             case UNARY:
-                return rightOperand.dependsOnVariables();
+                return calculateU.apply(rightOperand.calculate());
             case BINARY:
-                Set<Variable> r = rightOperand.dependsOnVariables();
-                r.addAll(leftOperand.dependsOnVariables());
-                return r;
+                return calculateBi.apply(leftOperand.calculate(), rightOperand.calculate());
         }
-        throw new InvalidOperatorKind(token);
+        throw new RuntimeException(new InvalidOperatorKind(token));                 // Should never happen
     }
 
     @Override
-    public Operator clone() {
-        try {
-            return (Operator)super.clone();
-        } catch (CloneNotSupportedException cnse) {
-            throw new RuntimeException(cnse);           // Operator cannot be cloned = VERY STRANGE
-        }
+    public Set<String> dependsOnVariables() {
 
+        Set<String> r = new HashSet<>();
+        switch (kind) {
+            case BINARY:
+                r.addAll(leftOperand.dependsOnVariables());
+            case UNARY:
+                r.addAll(rightOperand.dependsOnVariables());
+        }
+        return r;
     }
 
     @Override
     public String toLispString() {
-       switch (kind) {
-           case UNARY:
-               return token + '(' + rightOperand.toLispString() + ')';
-           case BINARY:
-               return token + '(' + leftOperand.toLispString() + ',' + rightOperand.toLispString() + ')';
-       }
+        switch (kind) {
+            case UNARY:
+                return token + '(' + rightOperand.toLispString() + ')';
+            case BINARY:
+                return token + '(' + leftOperand.toLispString() + ',' + rightOperand.toLispString() + ')';
+        }
         throw new InvalidOperatorKind(token);
+    }
+
+    @Override
+    public String toString() {
+        switch (kind) {
+            case UNARY:
+                return token + '(' + rightOperand.toString() + ')';
+            case BINARY:
+                return '(' + leftOperand.toString() + ' ' + token + ' ' + rightOperand.toString() + ')';
+        }
+        throw new InvalidOperatorKind(token);
+    }
+}
+
+/**
+ * Used to create and instantiate OperatorInstance objects
+ */
+public class Operator {
+    /** Operator precedences. For clarity, declare in ascending order.<br>
+     * For normal execution order of composite functions, all UNARY operators (including functions) must have precedence FUNC.
+     */
+    public enum Precedence {
+        /** addition/subtraction */
+        ADD(1),
+        /** multiplication/division */
+        MUL(10),
+        /** functions and unary operators (including unary minus) */
+        FUNC(20),
+        /** exponentiation */
+        POW(30);
+
+        private Precedence(int val) {
+            this.val = val;
+        }
+
+        /**
+         * Returns numerical value of the precedence. Operators are executed from highest to lowest Precedence.<br>
+         * If you edit this class, please declare Enum members in ascending order by this value to avoid confusion.
+         * @return Numerical value of the precedence
+         */
+        public int asInt() {
+            return val;
+        }
+
+        private int val;
+        private static final TreeSet<Precedence> desc;
+
+        static {
+            desc = new TreeSet<>((p1, p2) -> p2.val - p1.val);      // Custom "descending" Comparator
+            desc.addAll(Arrays.asList(Precedence.values()));
+        }
+
+        /**
+         * Lists all Enum members in descending order.
+         * @return List of precedences sorted by value in descending order
+         */
+        static TreeSet<Precedence> descending() {
+            return desc;
+        }
+    }
+
+    /**
+     * Operator kind.
+     */
+    public enum Kind {
+        /** Unary operator or function */
+        UNARY,
+        /** Binary operator */
+        BINARY }
+
+    final Precedence prec;
+    final Kind kind;
+    final String token;
+
+    final java.util.function.BiFunction<Double, Double, Double> calculateBi;
+    final java.util.function.Function<Double, Double> calculateU;
+
+    public Operator(String token, Precedence prec, BiFunction<Double, Double, Double> effect) {
+        this.prec = prec;
+        this.kind = BINARY;
+        this.token = token;
+        this.calculateBi = effect;
+        this.calculateU = null;
+    }
+
+    public Operator(String token, Precedence prec, Function<Double, Double> effect) {
+        this.prec = prec;
+        this.kind = UNARY;
+        this.token = token;
+        this.calculateBi = null;
+        this.calculateU = effect;
     }
 
 

@@ -4,13 +4,13 @@ import java.util.HashSet;
 import java.util.Set;
 
 class Constant implements Expression {
-    private final double val;
-    Constant(double value) {
+    private final Double val;
+    Constant(Double value) {
         val = value;
     }
 
     @Override
-    public double calculate() {
+    public Double calculate() {
         return val;
     }
 
@@ -20,7 +20,31 @@ class Constant implements Expression {
     }
 
     @Override
-    public Set<Variable> dependsOnVariables() {
-        return new HashSet<Variable>();
+    public String toString() {
+        return Double.toString(val);
+    }
+
+    @Override
+    public Set<String> dependsOnVariables() {
+        return new HashSet<String>();
+    }
+}
+
+class NamedConstant extends Constant {
+    private String name;        // Used only by toString and toLispString functions
+
+    NamedConstant(Double value, String name) {
+        super(value);
+        this.name = name;
+    }
+
+    @Override
+    public String toLispString() {
+        return name;
+    }
+
+    @Override
+    public String toString() {
+        return name;
     }
 }

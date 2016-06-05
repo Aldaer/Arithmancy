@@ -9,9 +9,15 @@ import java.util.Set;
 /**
  * Exception thrown when calculating expression with unset variables.
  */
-class VariableNotSet extends RuntimeException {
-    VariableNotSet(String varName) {
+class VariableNotSetException extends RuntimeException {
+    VariableNotSetException (String varName) {
         super("Variable not set: " + varName);
+    }
+}
+
+class UnknownVariableException extends RuntimeException {
+    UnknownVariableException(String name) {
+        super("Unknown variable: " + name);
     }
 }
 
@@ -20,23 +26,23 @@ class VariableNotSet extends RuntimeException {
  * Variables are generated automatically with ExpressionParser.parse. To get list of variables your expression depends on,
  * use Expression.dependsOnVariables().
  */
-public class Variable implements Expression {
-    private final String name;
-    private Double val;
+class Variable implements Expression {
+    private final String name;              // Used ONLY in toString() and toLispString()
+    private Double val;                     // null if not set
 
     Variable(String name) {
         this.name = name;
     }
 
-    public String getName() { return name; }
+    String getName() { return name; }
 
     /**
      * @return Value of the variable
-     * @throws VariableNotSet when variable not set
+     * @throws VariableNotSetException when variable not set
      */
     @Override
-    public double calculate() throws VariableNotSet {
-        if (val == null) throw new VariableNotSet(name);
+    public Double calculate() throws VariableNotSetException {
+        if (val == null) throw new VariableNotSetException(name);
         return val;
     }
 
@@ -46,9 +52,15 @@ public class Variable implements Expression {
     }
 
     @Override
-    public Set<Variable> dependsOnVariables() {
-        HashSet<Variable> thisv = new HashSet<>();
-        thisv.add(this);
+    public String toString() {
+        return name;
+    }
+
+
+    @Override
+    public Set<String> dependsOnVariables() {
+        HashSet<String> thisv = new HashSet<>();
+        thisv.add(this.name);
         return thisv;
     }
 
@@ -56,7 +68,7 @@ public class Variable implements Expression {
      * Sets the value of this variable.
      * @param value Value to be used in calculate()
      */
-    public void setValue(double value) {
+    void setValue(Double value) {
         val = value;
     }
 
@@ -64,9 +76,9 @@ public class Variable implements Expression {
     * Unsets the value of this variable. <p>
     * Variable must be set again with setValue(). Otherwise calculate() will throw VariableNotSet().
     */
-    public void unsetValue() { val = null; }
+    void unsetValue() { val = null; }
 
-    public boolean set() {
+    boolean set() {
         return val != null;
     }
 }

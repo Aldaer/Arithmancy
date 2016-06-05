@@ -43,7 +43,7 @@ public class TestArithmeticParser {
     @Test
     public void parseSimpleParentheses() throws ParsingError {
 
-        String formula = "1 - (  1 + ( 2 - 4) * 2  ) + 2 * (3 - 1)";
+        String formula = "1 - (  1+( 2 - 4) * 2  ) + 2 * (3 -1)";
 
         Expression e = ExpressionParser.parse(formula);
 
