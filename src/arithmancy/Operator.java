@@ -1,6 +1,9 @@
 package arithmancy;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -10,7 +13,7 @@ import static arithmancy.Operator.Kind.UNARY;
 import static arithmancy.Operator.Precedence;
 
 /**
- * OperatorInstance in calculable expressions. Used in Expression tree.
+ * Operator as used in calculable expressions, such as Expression tree.
  */
 class OperatorInstance implements Expression {
 
@@ -27,10 +30,6 @@ class OperatorInstance implements Expression {
         this.token = proto.token;
         calculateBi = proto.calculateBi;
         calculateU = proto.calculateU;
-    }
-
-    boolean incomplete() {
-        return rightOperand == null;
     }
 
     Expression leftOperand;
@@ -61,6 +60,18 @@ class OperatorInstance implements Expression {
     }
 
     @Override
+    public boolean complete() {
+        boolean complete = true;
+            switch (kind) {
+                case BINARY:
+                    complete = leftOperand != null && leftOperand.complete();
+                case UNARY:
+                    complete &= rightOperand != null && rightOperand.complete();
+            }
+        return complete;
+    }
+
+    @Override
     public String toLispString() {
         switch (kind) {
             case UNARY:
@@ -87,8 +98,8 @@ class OperatorInstance implements Expression {
  * Used to create and instantiate OperatorInstance objects
  */
 public class Operator {
-    /** Operator precedences. For clarity, declare in ascending order.<br>
-     * For normal execution order of composite functions, all UNARY operators (including functions) must have precedence FUNC.
+    /** Operator precedences. If you're to rewrite this to add custom precedences, declare them in ascending order (for clarity).<br>
+     * For normal execution of composite functions (i.e. exp sin x == exp(sin(x))), all UNARY operators (including functions) must have precedence FUNC.
      */
     public enum Precedence {
         /** addition/subtraction */
@@ -100,7 +111,7 @@ public class Operator {
         /** exponentiation */
         POW(30);
 
-        private Precedence(int val) {
+        Precedence(int val) {
             this.val = val;
         }
 
@@ -113,19 +124,19 @@ public class Operator {
             return val;
         }
 
-        private int val;
+        private final int val;
         private static final TreeSet<Precedence> desc;
 
         static {
             desc = new TreeSet<>((p1, p2) -> p2.val - p1.val);      // Custom "descending" Comparator
-            desc.addAll(Arrays.asList(Precedence.values()));
+            Arrays.asList(Precedence.values()).forEach(desc::add);  // Same as  desc.addAll(Arrays.asList(Precedence.values()));
         }
 
         /**
          * Lists all Enum members in descending order.
          * @return List of precedences sorted by value in descending order
          */
-        static TreeSet<Precedence> descending() {
+        static TreeSet<Precedence> highToLow() {
             return desc;
         }
     }

@@ -1,9 +1,6 @@
 package arithmancy;
 
-import javax.naming.OperationNotSupportedException;
-import java.util.Collection;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Set;
 
 /**
@@ -62,6 +59,11 @@ class Variable implements Expression {
         HashSet<String> thisv = new HashSet<>();
         thisv.add(this.name);
         return thisv;
+    }
+
+    @Override
+    public boolean complete() {
+        return true;
     }
 
     /**

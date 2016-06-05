@@ -31,5 +31,12 @@ public interface Expression {
      * @return Set of Variable objects
      */
     Set<String> dependsOnVariables();
+
+    /**
+     * Checks if the expression is complete, that is, has no lack of operands.<br>
+     * For example, "x", "2.0" and "a + b" are complete, whereas "1 + ln" and "* a" are not.
+     * @return If this expression is compete
+     */
+    boolean complete();
 }
 

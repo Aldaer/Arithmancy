@@ -1,4 +1,6 @@
-import arithmancy.*;
+import arithmancy.Expression;
+import arithmancy.ExpressionParser;
+import arithmancy.ParsingError;
 
 import java.util.Set;
 
@@ -10,6 +12,7 @@ import static IOHelp.IOHelper.writeln;
  */
 public class Main {
 
+    @SuppressWarnings("empty")
     public static void main(String[] args) {
         do {
             writeln("Enter expression (or empty string to stop): ");
@@ -34,7 +37,7 @@ public class Main {
                     System.out.print(var + " = ");
                     do try {
                         varVal = Double.valueOf(readln());
-                    } catch (NumberFormatException nfe) {}
+                    } catch (NumberFormatException nfe) { }
                     while (varVal == null);
 
                     ExpressionParser.setVariable(var, varVal);

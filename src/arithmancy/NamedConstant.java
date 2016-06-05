@@ -26,7 +26,12 @@ class Constant implements Expression {
 
     @Override
     public Set<String> dependsOnVariables() {
-        return new HashSet<String>();
+        return new HashSet<>();
+    }
+
+    @Override
+    public boolean complete() {
+        return true;
     }
 }
 

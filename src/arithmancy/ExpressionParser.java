@@ -4,39 +4,45 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static arithmancy.Operator.Kind.*;
+import static arithmancy.Operator.Kind.BINARY;
 import static arithmancy.Operator.Precedence.*;
 import static arithmancy.ParserEx.*;
 
 /**
- * Main expression parser. Transforms input string into a tree of Expression objects, which can be used to calculate the result of teh expression.
- *
+ * Main expression parser. Transforms input string into a tree of Expression objects, which can be used to calculate the result of teh expression.<br>
+ * The input string may contain number literals, operators, functions, named constants and variables.<br>
+ * You may add your own operators and functions by passing them to addOperator().<br>
+ * You may add your own named constants by passing them to addNamedConstant().<br>
+ * If your expression contains variables, to be calculable, all of them must have been set. Use method Expression.dependsOnVariables() to get the list of variables
+ * and setVariable to set them. Method addNamedConstant allows you to set a value that persists until a call to resetNamedConstants().<br>
+ * For the list of built-in operators and named constants, see loadDefaultKnownOperators() and resetNamedConstants(), respectively.<br>
+ * All operator, function and variable names that contain ASCII letters must be delimited with digits, spaces or non-word characters.<br>
+ * Operators that consist only of non-word characters must not be substrings of each other.
  */
 public class ExpressionParser {
 
     static String preprocessExpression(String e) {
 
-        // Bring string to lowercase
-        e = e.toLowerCase();
+        // Bring string to lowercase and put into Replacer for processing
+        MutableString es = new MutableString(e.toLowerCase());
 
-        // Add spaces around all known operators to facilitate further processing
-        for (String opToken: knownOps().values()) {
-            String opPar = '(' + Pattern.quote(opToken) + ')';
-            e = e.replaceAll(opPar, ADD_SPACES_AROUND);
-        }
+        // Add spaces around all known NON-WORD operators to facilitate further processing
+        knownOps().values().stream().filter(s -> NONWORD_SEQUENCE.matcher(s).matches()).forEach(es::addSpacesAround);    // s -> es.addSpacesAround(s)
 
-        // Ditto for named constants
-        for (String consToken: knownNamedConsts.keySet()) {
-            String cons = '(' + Pattern.quote(consToken) + ')';
-            e = e.replaceAll(cons, ADD_SPACES_AROUND);
-        }
+        // Ditto for NON-ASCII named constants
+        knownNamedConsts.keySet().stream().filter(s -> NONASCII_SEQUENCE.matcher(s).matches()).forEach(es::addSpacesAround);
 
         // Ditto for numbers
-        e = e.replaceAll(ANY_NUMBER, ADD_SPACES_AROUND);
+        es.replaceAll(ANY_NUMBER, ADD_SPACES_AROUND);
 
-        // Replace all whitespaces with single spaces, remove all spaces around parentheses, remove starting and ending whitespace
-        return e.replaceAll(ANY_WHITESPACE, " ")
-            .replaceAll(SPACES_AROUND_PARENTHESES, REMOVE_SPACES_AROUND).trim();
+        // Replace all whitespaces with single spaces
+        es.replaceAll(ANY_WHITESPACE, " ");
+
+        // Remove all spaces around parentheses
+        es.replaceAll(SPACES_AROUND_PARENTHESES, REMOVE_SPACES_AROUND);
+
+        // Remove starting and ending whitespace
+        return es.toString().trim();
     }
 
     /**
@@ -75,7 +81,7 @@ public class ExpressionParser {
         }
 
         LinkedList<Expression> expressionChain = new LinkedList<>();
-        ArrayList<String> atoms = new ArrayList<>(Arrays.asList(expr.split(" ")));                  // TODO: implement smart atom parsing with silent multiplication, i.e. ab = a * b
+        ArrayList<String> atoms = new ArrayList<>(Arrays.asList(expr.split(" ")));
         if (atoms.size() == 0) throw new ParsingError("Empty expression");
 
         for(String a: atoms) {
@@ -97,9 +103,9 @@ public class ExpressionParser {
             } else {
                 boolean isUnary = knownUnaries.keySet().contains(a);
                 boolean isBinary = knownBinaries.keySet().contains(a);
-                if (isUnary || isBinary) {                                                          // It is a known operator
+                if (isUnary || isBinary) {                                                          // It is a known operator, which can be unary, binary or both
 
-                    Operator op = null;                                                                   // Select prototype: unary or binary
+                    Operator op;                                                                    // Select prototype: unary or binary
                     Operator unaryA = isUnary? knownUnaries.get(a) : null;
                     Operator binaryA = isBinary? knownBinaries.get(a) : null;
 
@@ -112,12 +118,10 @@ public class ExpressionParser {
                         op = unaryA;                                            // If expression begins with an operator, it is always unary
                     else {
                         Expression prev = expressionChain.getLast();            // Guaranteed to exist
-                        if ((prev instanceof Constant) || (prev instanceof Variable))
-                            op = binaryA;                                       // "a - 2" is a - 2, not a*(-2)
-                        else if (prev instanceof OperatorInstance) {
-                            op = ((OperatorInstance) prev).incomplete() ? unaryA : binaryA;     // (a+2)-3: binary '-', a+ -3: unary '-'
-                        }
+                        op = prev.complete()? binaryA : unaryA;                 // "a - 2" is a - 2, not a*(-2)
+                        // (a+2)-3: binary '-', a+ -3: unary '-'
                     }
+
                     expressionChain.add(new OperatorInstance(op));
 
                 } else                                                          // Not a number, ATOM or operator? It's a variable.
@@ -127,11 +131,15 @@ public class ExpressionParser {
 
         for (OperatorInstance op: opsReorederedByPrecedence(expressionChain)) {
             int opPos = expressionChain.indexOf(op);
-            if (opPos == expressionChain.size() - 1) throw new ParsingError("OperatorInstance " + op.token + " has no right operand");
+            if (opPos == expressionChain.size() - 1) throw new ParsingError("Operator " + op.token + " has no right operand");
+
+            // Only COMPLETE expressions may be removed from expressionChain to serve as operands
             op.rightOperand = expressionChain.remove(opPos + 1);
+            if (! op.rightOperand.complete()) throw new ParsingError("Operator " + op.token + "has incomplete right operand");
             if (op.kind == BINARY) {
-                if (opPos == 0) throw new ParsingError("OperatorInstance " + op.token + " has no left operand");
+                if (opPos == 0) throw new ParsingError("Operator " + op.token + " has no left operand");
                 op.leftOperand = expressionChain.remove(opPos - 1);
+                if (! op.leftOperand.complete()) throw new ParsingError("Operator " + op.token + "has incomplete left operand");
             }
         }
 
@@ -160,15 +168,18 @@ public class ExpressionParser {
         List<OperatorInstance> reordered = new ArrayList<>();
 
         // Loop for all precedences from highest to lowest
-        for (Operator.Precedence currentPrec : Operator.Precedence.descending() ) {
+        for (Operator.Precedence currentPrec : Operator.Precedence.highToLow() ) {
 
             // Functions and other unary operators are evaluated RTL, all other operators are evaluated LTR.
             Iterator<Expression> pass = (currentPrec == Operator.Precedence.FUNC)? unordered.descendingIterator() : unordered.iterator();
             for (; pass.hasNext();) {
-                Expression nextEx = pass.next();
-                // Adding only operators with current precedence that have no operands
-                if ((nextEx instanceof OperatorInstance) && (((OperatorInstance) nextEx).prec == currentPrec) && ((OperatorInstance) nextEx).incomplete()) {
-                    reordered.add((OperatorInstance) nextEx);
+                Expression expr = pass.next();
+                // Adding only operators with current precedence that have not enough operands.
+                // Operators with enough operands ("complete" ones) are produced by already-parsed expressions in parentheses.
+                if ( (expr instanceof OperatorInstance) &&
+                        (((OperatorInstance) expr).prec == currentPrec) &&
+                        (! expr.complete()) ) {
+                    reordered.add((OperatorInstance) expr);
                 }
             }
         }
@@ -216,9 +227,7 @@ public class ExpressionParser {
     /**
      * Loads default set of arithmetic operators, functions etc.<br>
      * It gets called automatically during static initiation. No need to call it again unless you clear known operator list using clearKnownOperators().<br>
-     * To add suport for new operators by default, extend this class, override
-     * LoadDefaultKnownOperators, call super() and then add any additional
-     * operators or functions you need. All functions are implicitly unary operators.
+     *  All functions are implicitly unary operators.
      */
     public static void loadDefaultKnownOperators() {
         clearKnownOperators();
@@ -247,13 +256,27 @@ public class ExpressionParser {
 
         addOperator(new Operator("tg", FUNC, Math::tan) );
 
+        addOperator(new Operator("sqrt", FUNC, Math::sqrt));
+
+        addOperator(new Operator("√", FUNC, Math::sqrt));
+
 // TODO: add more standard functions
         recalculateValidChars();
     }
 
+    /**
+     * Deletes all named constants except the default ones.
+     */
+    public static void resetNamedConstants() {
+        knownNamedConsts.clear();
+        addNamedConstant("pi", Math.PI);
+        addNamedConstant("π", Math.PI);
+        addNamedConstant("e", Math.E);
+    }
+
     private static void recalculateValidChars() {
         StringBuilder validCh = new StringBuilder();
-        for (String opToken:knownOps().values()) validCh.append(opToken);
+        knownOps().values().forEach(validCh::append);//        for (String opToken:knownOps().values()) validCh.append(opToken);
 
         validChars = Pattern.compile("[a-z\\s\\d\\.\\(\\)" + Pattern.quote(validCh.toString()) + "]*");
     }
@@ -306,14 +329,11 @@ public class ExpressionParser {
         return true;
     }
 
-    public static void resetNamedConstants() {
-        knownNamedConsts.clear();
-        addNamedConstant("pi", Math.PI);
-        addNamedConstant("e", Math.E);
-    }
-
+    /**
+     * Clears values of all set variables.
+     */
     public static void unsetAllVariables() {
-        for (Variable v: knownVars.values()) v.unsetValue();
+        knownVars.values().forEach(Variable::unsetValue);   //        for (Variable v: knownVars.values()) v.unsetValue();
     }
 
     /**
@@ -340,12 +360,6 @@ public class ExpressionParser {
         return newV;
     }
 
-
-    /**
-     * Breaks up string that contains no spaces into variables and operators.
-     */
-/*    private static String[] breakAtom(String s) {      // TODO: implement this correctly and use in parseSubstring()
-    }*/
 
     public static void setVariable(String varName, Double varVal) throws UnknownVariableException {
         if (!knownVars.containsKey(varName)) throw new UnknownVariableException(varName);

@@ -2,7 +2,7 @@ package arithmancy;
 
 import org.junit.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertTrue;
 
 public class VariableTest {
     @Test(expected = VariableNotSetException.class)
