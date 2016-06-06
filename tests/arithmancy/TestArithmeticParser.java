@@ -60,6 +60,13 @@ public class TestArithmeticParser {
     }
 
     @Test
+    public void testOperatorPriority() throws ParsingError {
+        String formula = "1+2*3^2";
+
+        Assert.assertEquals(ExpressionParser.parse(formula).calculate(), 19, 0.00001);
+    }
+
+    @Test
     public void testNamedConstants() throws ParsingError {
         Expression e = ExpressionParser.parse("2*pi");
 

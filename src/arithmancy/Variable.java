@@ -1,6 +1,7 @@
 package arithmancy;
 
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -38,7 +39,7 @@ class Variable implements Expression {
      * @throws VariableNotSetException when variable not set
      */
     @Override
-    public Double calculate() throws VariableNotSetException {
+    public double calculate() throws VariableNotSetException {
         if (val == null) throw new VariableNotSetException(name);
         return val;
     }
@@ -66,11 +67,22 @@ class Variable implements Expression {
         return true;
     }
 
+    Optional<Double> getValueOrEmpty() {
+        return Optional.ofNullable(val);
+    }
+
+    /**
+     * Return value of the variable, null if not set
+     */
+    Double getValueOrNull() {
+        return val;
+    }
+
     /**
      * Sets the value of this variable.
      * @param value Value to be used in calculate()
      */
-    void setValue(Double value) {
+    void setValue(double value) {
         val = value;
     }
 
@@ -80,7 +92,10 @@ class Variable implements Expression {
     */
     void unsetValue() { val = null; }
 
-    boolean set() {
+    /**
+     * Returns true is the var is set
+     */
+    boolean isSet() {
         return val != null;
     }
 }

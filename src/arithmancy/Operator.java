@@ -36,7 +36,7 @@ class OperatorInstance implements Expression {
     Expression rightOperand;
 
     @Override
-    public Double calculate() {
+    public double calculate() {
         switch (kind) {
             case UNARY:
                 return calculateU.apply(rightOperand.calculate());

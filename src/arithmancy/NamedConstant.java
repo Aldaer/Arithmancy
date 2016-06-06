@@ -4,13 +4,13 @@ import java.util.HashSet;
 import java.util.Set;
 
 class Constant implements Expression {
-    private final Double val;
-    Constant(Double value) {
+    private final double val;
+    Constant(double value) {
         val = value;
     }
 
     @Override
-    public Double calculate() {
+    public double calculate() {
         return val;
     }
 
@@ -36,9 +36,9 @@ class Constant implements Expression {
 }
 
 class NamedConstant extends Constant {
-    private String name;        // Used only by toString and toLispString functions
+    private final String name;        // Used only by toString and toLispString functions
 
-    NamedConstant(Double value, String name) {
+    NamedConstant(double value, String name) {
         super(value);
         this.name = name;
     }

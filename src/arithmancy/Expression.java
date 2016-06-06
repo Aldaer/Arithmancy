@@ -10,7 +10,7 @@ public interface Expression {
      * Returns the result of calculation
      * @return Result of calculation
      */
-    Double calculate();
+    double calculate();
 
     /**
      * Returns expression represented as a string of nested operators followed by operands<br>
@@ -27,14 +27,14 @@ public interface Expression {
 
     /**
      * Returns a list of variables this object depends on. Successful calculation requires all variables to be set.<br>
-     * You can iterate through the returned set and call ExpressionParser.setVariable() to assign/unassign values to all vars.
-     * @return Set of Variable objects
+     * You can iterate through the returned set and call ExpressionParser.setVariable() to assign/unassign values to the vars.
+     * @return Set of variable names or an empty set
      */
     Set<String> dependsOnVariables();
 
     /**
      * Checks if the expression is complete, that is, has no lack of operands.<br>
-     * For example, "x", "2.0" and "a + b" are complete, whereas "1 + ln" and "* a" are not.
+     * For example, "x", "2.0" and "a + b" are complete, whereas "*", "1 + ln" and "* a" are not.
      * @return If this expression is compete
      */
     boolean complete();

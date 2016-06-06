@@ -3,6 +3,7 @@ package arithmancy;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static arithmancy.Operator.Kind.BINARY;
 import static arithmancy.Operator.Precedence.*;
@@ -58,8 +59,8 @@ public class ExpressionParser {
 
         if (!validChars.matcher(normExpr).matches()) throw new ParsingError("Invalid character detected");
 
-        int errpos = checkParenthesesAreCorrect(normExpr);
-        if (errpos >= 0) throw new ParsingError("Invalid parenthesis structure");
+        int errPos = checkParenthesesAreCorrect(normExpr);
+        if (errPos >= 0) throw new ParsingError("Invalid parenthesis structure");
 
         return parseSubstring(normExpr);
     }
@@ -85,7 +86,7 @@ public class ExpressionParser {
         if (atoms.size() == 0) throw new ParsingError("Empty expression");
 
         for(String a: atoms) {
-            // ============== Main recognizer. Adds recongnized pieces as incomplete expressions (i. e. operators without operands)
+            // ============== Main recognizer. Adds recognized pieces as incomplete expressions (i. e. operators without operands)
 
 
             Matcher m = ATOM.matcher(a);
@@ -129,27 +130,33 @@ public class ExpressionParser {
             }
         }
 
-        for (OperatorInstance op: opsReorederedByPrecedence(expressionChain)) {
+        for (OperatorInstance op: opsReorderedByPrecedence(expressionChain)) {
             int opPos = expressionChain.indexOf(op);
             if (opPos == expressionChain.size() - 1) throw new ParsingError("Operator " + op.token + " has no right operand");
 
             // Only COMPLETE expressions may be removed from expressionChain to serve as operands
             op.rightOperand = expressionChain.remove(opPos + 1);
-            if (! op.rightOperand.complete()) throw new ParsingError("Operator " + op.token + "has incomplete right operand");
+            if (! op.rightOperand.complete()) throw new ParsingError("Operator " + op.token + " has incomplete right operand");
             if (op.kind == BINARY) {
                 if (opPos == 0) throw new ParsingError("Operator " + op.token + " has no left operand");
                 op.leftOperand = expressionChain.remove(opPos - 1);
-                if (! op.leftOperand.complete()) throw new ParsingError("Operator " + op.token + "has incomplete left operand");
+                if (! op.leftOperand.complete()) throw new ParsingError("Operator " + op.token + " has incomplete left operand");
             }
         }
 
         if (expressionChain.size() > 1) {
             StringBuilder exps = new StringBuilder("Uncollapsed expression: [");
-            for (Expression ex: expressionChain) {
+
+            expressionChain.forEach(ex -> {
+                exps.append(" {");
+                exps.append(ex.toLispString());
+                exps.append('}'); }
+                );
+/*            for (Expression ex: expressionChain) {
                 exps.append(" {");
                 exps.append(ex.toLispString());
                 exps.append('}');
-            }
+            }*/
             exps.append(" ]");
             throw new ParsingError(exps.toString());
         }
@@ -162,7 +169,7 @@ public class ExpressionParser {
      * Constants, vars and COMPLETE operators (i.e. those who already have their right operand) are OMITTED.
      * Input list is unaffected.
      */
-    private static List<OperatorInstance> opsReorederedByPrecedence(final Collection<Expression> expChain) {
+    private static List<OperatorInstance> opsReorderedByPrecedence(final Collection<Expression> expChain) {
 
         LinkedList<Expression> unordered = (expChain instanceof LinkedList)? (LinkedList)expChain : new LinkedList<>(expChain);
         List<OperatorInstance> reordered = new ArrayList<>();
@@ -240,7 +247,7 @@ public class ExpressionParser {
 
         addOperator(new Operator("/", MUL, (x, y) -> x / y) );
 
-        addOperator(new Operator("^", POW, (x, y) -> Math.exp(Math.log(x)*y)) );
+        addOperator(new Operator("^", POW, Math::pow) );
 
         addOperator(new Operator("-", FUNC, (x) -> -x ) );
 
@@ -352,7 +359,11 @@ public class ExpressionParser {
         return true;
     }
 
-    private static Variable addNewVariable(String name) {                                    // All variables of the same name are intrinsically the same Variable object
+    /**
+     * All variables of the same name are intrinsically the same Variable object
+     * DO NOT call this directly to avoid name clashes with operators and named constants
+     */
+    private static Variable addNewVariable(String name) {
         if (knownVars.containsKey(name)) return knownVars.get(name);
 
         Variable newV = new Variable(name);
@@ -371,18 +382,28 @@ public class ExpressionParser {
      */
     private ExpressionParser() {}
 
-    private static Map<String, Operator> knownUnaries = new HashMap<>();
-    private static Map<String, Operator> knownBinaries = new HashMap<>();
+    private static final Map<String, Operator> knownUnaries = new HashMap<>();
+    private static final Map<String, Operator> knownBinaries = new HashMap<>();
 
+    /**
+     * Merges lists of known unary and binary operators. Uses caching for speed.
+     * Note that (Key,Value) in knownOps is REVERSED, since it can contain up to two operators with the same token.
+     */
     private static Map<Operator, String> knownOps() {
         if (null == knownOpsCache) {
             knownOpsCache = new HashMap<>();
-            for (Map.Entry<String, Operator> unOp: knownUnaries.entrySet()) {
+
+            knownOpsCache = knownUnaries.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));             // Reverse the map of unaries
+
+            knownOpsCache.putAll(knownBinaries.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey)));      // Reverse the map of binaries and add to the same collection
+
+
+/*            for (Map.Entry<String, Operator> unOp: knownUnaries.entrySet()) {
                 knownOpsCache.put(unOp.getValue(), unOp.getKey());
             }
             for (Map.Entry<String, Operator> biOp: knownBinaries.entrySet()) {
                 knownOpsCache.put(biOp.getValue(), biOp.getKey());
-            }
+            }*/
         }
         return knownOpsCache;
     }
@@ -390,12 +411,27 @@ public class ExpressionParser {
     private static Pattern validChars = DEFAULT_VALID_CHARS;       // Gets updated when adding new known operators
 
     private static Map<Operator, String> knownOpsCache;            // Invalidate (= null) every time when adding or removing operators
-    private static Map<String, Variable> knownVars = new HashMap<>();
-    private static Map<String, Constant> knownNamedConsts = new HashMap<>();
+    private static final Map<String, Variable> knownVars = new HashMap<>();
+    private static final Map<String, Constant> knownNamedConsts = new HashMap<>();
 
     static {       // Static init block
         loadDefaultKnownOperators();
         resetNamedConstants();
     }
 
+    /**
+     * Returns value of a variable or named constant you've set earlier. <br>
+     * Returns empty if there's no such variable or constant, as well as if the variable is not set.
+     * @param name Name of variable or named constant
+     * @return Value or empty Optional
+     */
+    public static Optional<Double> getNamedValue(String name) {
+        Optional<Double> optConst = Optional.ofNullable(knownNamedConsts.get(name)).map(Constant::calculate);              // Empty if no constant, otherwise non-null Double
+
+        return optConst.isPresent() ? optConst : Optional.ofNullable(knownVars.get(name)).flatMap(Variable::getValueOrEmpty);
+        /*
+        if (knownNamedConsts.containsKey(var)) return Optional.of(knownNamedConsts.get(var).calculate());
+        if (knownVars.containsKey(var)) return knownVars.get(var).getValueOrEmpty();
+        return Optional.empty(); */
+    }
 }
