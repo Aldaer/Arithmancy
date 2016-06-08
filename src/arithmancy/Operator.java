@@ -1,9 +1,6 @@
 package arithmancy;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -11,6 +8,7 @@ import static arithmancy.Operator.Kind;
 import static arithmancy.Operator.Kind.BINARY;
 import static arithmancy.Operator.Kind.UNARY;
 import static arithmancy.Operator.Precedence;
+import static java.util.Collections.unmodifiableSortedSet;
 
 /**
  * Operator as used in calculable expressions, such as Expression tree.
@@ -98,7 +96,9 @@ class OperatorInstance implements Expression {
  * Used to create and instantiate OperatorInstance objects
  */
 public class Operator {
-    /** Operator precedences. If you're to rewrite this to add custom precedences, declare them in ascending order (for clarity).<br>
+    /**
+     * Operator precedences. If you're to rewrite this to add custom precedences, it's better to declare them in ascending order (for clarity),<br>
+     * but actual order of precedence is determined by the numerical value passed to the constructor.<br>
      * For normal execution of composite functions (i.e. exp sin x == exp(sin(x))), all UNARY operators (including functions) must have precedence FUNC.
      */
     public enum Precedence {
@@ -125,20 +125,18 @@ public class Operator {
         }
 
         private final int val;
-        private static final TreeSet<Precedence> desc;
-
-        static {
-            desc = new TreeSet<>((p1, p2) -> p2.val - p1.val);      // Custom "descending" Comparator
-            Arrays.asList(Precedence.values()).forEach(desc::add);  // Same as  desc.addAll(Arrays.asList(Precedence.values()));
-        }
 
         /**
-         * Lists all Enum members in descending order.
-         * @return List of precedences sorted by value in descending order
+         * Includes all Enum members in descending order determined by their int values. The set is unmodifiable.
          */
-        static TreeSet<Precedence> highToLow() {
-            return desc;
+        public static final SortedSet<Precedence> highToLow;
+
+        static {
+            SortedSet<Precedence> desc = new TreeSet<>((v1, v2) -> v2.val - v1.val);
+            desc.addAll(Arrays.asList(Precedence.values()));
+            highToLow = unmodifiableSortedSet(desc);
         }
+
     }
 
     /**

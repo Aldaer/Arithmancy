@@ -175,7 +175,7 @@ public class ExpressionParser {
         List<OperatorInstance> reordered = new ArrayList<>();
 
         // Loop for all precedences from highest to lowest
-        for (Operator.Precedence currentPrec : Operator.Precedence.highToLow() ) {
+        for (Operator.Precedence currentPrec : Operator.Precedence.highToLow ) {
 
             // Functions and other unary operators are evaluated RTL, all other operators are evaluated LTR.
             Iterator<Expression> pass = (currentPrec == Operator.Precedence.FUNC)? unordered.descendingIterator() : unordered.iterator();
