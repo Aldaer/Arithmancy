@@ -426,9 +426,11 @@ public class ExpressionParser {
      * @return Value or empty Optional
      */
     public static Optional<Double> getNamedValue(String name) {
-        Optional<Double> optConst = Optional.ofNullable(knownNamedConsts.get(name)).map(Constant::calculate);              // Empty if no constant, otherwise non-null Double
+        return Optional.ofNullable(Optional.ofNullable(knownNamedConsts.get(name)).map(Constant::calculate).
+                orElse(Optional.ofNullable(knownVars.get(name)).map(Variable::getValueOrNull).
+                        orElse(null)));
 
-        return optConst.isPresent() ? optConst : Optional.ofNullable(knownVars.get(name)).flatMap(Variable::getValueOrEmpty);
+//        return optConst.isPresent() ? optConst : Optional.ofNullable(knownVars.get(name)).flatMap(Variable::getValueOrEmpty);
         /*
         if (knownNamedConsts.containsKey(var)) return Optional.of(knownNamedConsts.get(var).calculate());
         if (knownVars.containsKey(var)) return knownVars.get(var).getValueOrEmpty();
